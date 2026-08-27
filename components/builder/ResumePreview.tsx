@@ -116,7 +116,7 @@ export function ResumePreview({ resume }: { resume: Resume }) {
         {/* Contact Info Section - At the very end */}
         <div className="mt-8 pt-4 border-t border-gray-200">
            <h3 className="text-sm font-bold text-engrity-navy underline mb-2 uppercase tracking-wide">Contact Information:</h3>
-           <div className="grid grid-cols-2 gap-2 text-sm">
+           <div className="grid grid-cols-1 gap-2 text-sm">
               <div className="flex gap-2">
                 <span className="font-bold text-engrity-navy">Email:</span>
                 <span>{resume.email || 'N/A'}</span>

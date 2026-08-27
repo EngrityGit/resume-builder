@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Upload, Download, FileText, Loader2, Plus, Save, Trash2, Mail, Phone, MapPin, Sparkles, GraduationCap, Award } from 'lucide-react';
+import { Upload, Download, FileText, Loader2, Plus, Save, Trash2, Mail, Phone, Sparkles, GraduationCap, Award } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { createClient } from '@/lib/supabase/client';
@@ -13,8 +13,7 @@ import { ResumePreview } from './ResumePreview';
 import { AIChatSidecar } from './AIChatSidecar';
 import { useResumeBuilderStore } from '@/lib/store/resumeStore';
 import { extractResumeText } from '@/lib/parsing/extractText';
-import { FONT_OPTIONS } from '@/lib/fonts';
-import type { AIProvider, Resume } from '@/types/resume';
+import type { AIProvider, Resume, EmploymentEntry } from '@/types/resume';
 
 const PROVIDER_LABELS: Record<AIProvider, string> = { anthropic: 'Claude', openai: 'OpenAI', gemini: 'Gemini' };
 
@@ -69,8 +68,50 @@ export function SplitScreen({ initialResume }: { initialResume?: Resume }) {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  // --- ENGRITY LOGIC ENGINE ---
+  const applyEngrityStandards = (data: Resume): Resume => {
+    const now = new Date();
+    const currentMonthYear = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+    
+    // 1. Define mandatory Engrity Job
+    const engrityJob: EmploymentEntry = {
+      id: 'engrity-fixed-entry',
+      company: 'Engrity Group Inc. (Formerly Engrity Inspection Services)',
+      title: 'QC Inspector',
+      location: '',
+      start_date: currentMonthYear,
+      end_date: '', 
+      is_present: true,
+      responsibilities: ['Providing QC Inspection Services to Engrity Clients....']
+    };
+
+    // 2. Process existing jobs: If they are "Present", cap them to current month and set is_present to false
+    const processedHistory = (data.employment || [])
+      .filter(job => !job.company?.includes('Engrity Group Inc.')) // Remove duplicates if existing
+      .map(job => {
+        if (job.is_present) {
+           return { 
+             ...job, 
+             is_present: false, 
+             end_date: currentMonthYear 
+           };
+        }
+        return job;
+      });
+
+    return {
+      ...data,
+      email: 'selva.nadar@engrity.com',
+      phone: '780-217-1439',
+      address: '', // No address as requested
+      employment: [engrityJob, ...processedHistory]
+    };
+  };
+
   useEffect(() => {
-    if (initialResume) setResume(initialResume);
+    if (initialResume) {
+        setResume(applyEngrityStandards(initialResume));
+    }
   }, [initialResume]);
 
   useEffect(() => {
@@ -87,7 +128,9 @@ export function SplitScreen({ initialResume }: { initialResume?: Resume }) {
         body: JSON.stringify({ rawText: text, provider }),
       });
       const data = await res.json();
-      if (data.resume) setResume(data.resume);
+      if (data.resume) {
+          setResume(applyEngrityStandards(data.resume));
+      }
     } finally {
       setParsing(false);
     }
@@ -218,9 +261,8 @@ export function SplitScreen({ initialResume }: { initialResume?: Resume }) {
             />
           </section>
 
-          {/* Point Lists (Certs, Education, Skills, Tickets) */}
+          {/* Point Lists */}
           <div className="grid grid-cols-1 gap-8">
-            {/* Certifications */}
             <div className="space-y-3">
                 <h2 className="text-[11px] font-black uppercase text-engrity-blue border-b pb-1 tracking-widest flex items-center gap-2">
                     <Award className="w-3 h-3" /> Certifications
@@ -232,7 +274,6 @@ export function SplitScreen({ initialResume }: { initialResume?: Resume }) {
                 />
             </div>
 
-            {/* Education - The "Missing" Section */}
             <div className="space-y-3">
                 <h2 className="text-[11px] font-black uppercase text-engrity-blue border-b pb-1 tracking-widest flex items-center gap-2">
                     <GraduationCap className="w-3 h-3" /> Education
@@ -250,13 +291,11 @@ export function SplitScreen({ initialResume }: { initialResume?: Resume }) {
                 />
             </div>
 
-            {/* Safety Tickets */}
             <div className="space-y-3">
                 <h2 className="text-[11px] font-black uppercase text-engrity-blue border-b pb-1 tracking-widest">Safety Tickets</h2>
                 <ListEditor items={resume.safety_tickets || []} onChange={(val) => updateField('safety_tickets', val)} placeholder="e.g. H2S Alive" />
             </div>
 
-            {/* Technical Skills */}
             <div className="space-y-3">
                 <div className="flex justify-between items-center border-b pb-1">
                     <h2 className="text-[11px] font-black uppercase text-engrity-blue tracking-widest">Technical Skills</h2>
@@ -267,7 +306,6 @@ export function SplitScreen({ initialResume }: { initialResume?: Resume }) {
                 <ListEditor items={resume.skills || []} onChange={(val) => updateField('skills', val)} placeholder="e.g. Visual Inspection" />
             </div>
 
-            {/* Computer Skills */}
             <div className="space-y-3">
                 <h2 className="text-[11px] font-black uppercase text-engrity-blue border-b pb-1 tracking-widest">Computer Skills</h2>
                 <ListEditor items={resume.computer_skills || []} onChange={(val) => updateField('computer_skills', val)} placeholder="e.g. Bluebeam, Excel" />
@@ -291,38 +329,32 @@ export function SplitScreen({ initialResume }: { initialResume?: Resume }) {
             </DndContext>
           </section>
 
-          {/* Contact Details */}
+          {/* Contact Details - RECONFIGURED FOR STACKED VIEW AND NO ADDRESS */}
           <section className="space-y-4 pt-10 border-t-2 border-gray-100">
             <h2 className="text-[11px] font-black uppercase text-engrity-blue tracking-widest">Contact Information</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-4 max-w-md">
                 <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-400 uppercase">Email</label>
-                    <div className="flex items-center gap-2 border rounded-md px-3 h-10 focus-within:ring-2 focus-within:ring-engrity-blue">
+                    <div className="flex items-center gap-2 border rounded-md px-3 h-10 focus-within:ring-2 focus-within:ring-engrity-blue bg-gray-50">
                         <Mail className="w-4 h-4 text-gray-400" />
-                        <input className="bg-transparent text-sm w-full outline-none" placeholder="email@example.com" value={resume.email || ''} onChange={(e) => updateField('email', e.target.value)} />
+                        <input className="bg-transparent text-sm w-full outline-none font-medium" placeholder="email@example.com" value={resume.email || ''} onChange={(e) => updateField('email', e.target.value)} />
                     </div>
                 </div>
                 <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-400 uppercase">Phone</label>
-                    <div className="flex items-center gap-2 border rounded-md px-3 h-10 focus-within:ring-2 focus-within:ring-engrity-blue">
+                    <div className="flex items-center gap-2 border rounded-md px-3 h-10 focus-within:ring-2 focus-within:ring-engrity-blue bg-gray-50">
                         <Phone className="w-4 h-4 text-gray-400" />
-                        <input className="bg-transparent text-sm w-full outline-none" placeholder="+1..." value={resume.phone || ''} onChange={(e) => updateField('phone', e.target.value)} />
+                        <input className="bg-transparent text-sm w-full outline-none font-medium" placeholder="+1..." value={resume.phone || ''} onChange={(e) => updateField('phone', e.target.value)} />
                     </div>
                 </div>
-                <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">Location</label>
-                    <div className="flex items-center gap-2 border rounded-md px-3 h-10 focus-within:ring-2 focus-within:ring-engrity-blue">
-                        <MapPin className="w-4 h-4 text-gray-400" />
-                        <input className="bg-transparent text-sm w-full outline-none" placeholder="City, Province" value={resume.address || ''} onChange={(e) => updateField('address', e.target.value)} />
-                    </div>
-                </div>
+                <p className="text-[10px] text-gray-400 italic">Note: Address is hidden per Engrity template requirements.</p>
             </div>
           </section>
         </div>
 
         {/* --- RIGHT PREVIEW --- */}
         <div className="bg-slate-200 overflow-y-auto flex justify-center p-12">
-           <div className="shadow-2xl h-fit w-full max-w-[816px]">
+           <div className="shadow-2xl h-fit w-full max-w-[816px] bg-white">
               <ResumePreview resume={resume} />
            </div>
         </div>

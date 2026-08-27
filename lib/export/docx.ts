@@ -189,7 +189,7 @@ export async function buildResumeDocx(resume: Resume, providedLogoBuffer?: Buffe
             children: [
               new Paragraph({
                 alignment: AlignmentType.CENTER,
-                children: [new TextRun({ text: 'Resume', size: 32, color: TEXT_GRAY, font: headerFont })], // FIXED: Used hex code '808080'
+                children: [new TextRun({ text: 'Resume', size: 32, color: TEXT_GRAY, font: headerFont })],
               }),
               new Paragraph({
                 alignment: AlignmentType.CENTER,
@@ -250,6 +250,21 @@ export async function buildResumeDocx(resume: Resume, providedLogoBuffer?: Buffe
       employmentTable(e as ExtendedEmployment, bodyFont),
       createSpacer(300)
     ]),
+
+    // --- CONTACT INFO AT THE VERY END ---
+    sectionHeading('Contact Information:', bodyFont),
+    new Paragraph({
+      children: [
+        new TextRun({ text: 'Email: ', bold: true, color: ENGRITY_NAVY, font: bodyFont }),
+        new TextRun({ text: resume.email || 'selva.nadar@engrity.com', color: ENGRITY_NAVY, font: bodyFont }),
+      ],
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({ text: 'Phone: ', bold: true, color: ENGRITY_NAVY, font: bodyFont }),
+        new TextRun({ text: resume.phone || '780-217-1439', color: ENGRITY_NAVY, font: bodyFont }),
+      ],
+    }),
   ];
 
   const doc = new Document({
