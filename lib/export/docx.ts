@@ -13,11 +13,10 @@ import {
   Header,
   VerticalAlign,
   Packer,
-  // Added these imports to fix the floating/watermark errors
+  // Fix: Import these for correct typing
   HorizontalPositionAlign,
   VerticalPositionAlign,
   TextWrappingType,
-  TextWrappingSide,
 } from 'docx';
 import { NextResponse } from 'next/server';
 import type { Resume } from '@/types/resume';
@@ -142,7 +141,7 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
   const logoBuffer = await fs.readFile(logoPath).catch(() => null);
   const watermarkBuffer = await fs.readFile(watermarkPath).catch(() => null);
 
-  // FIXED: Watermark definition using correct enums and wrapping
+  // FIX: watermark definition
   const watermarkPara = watermarkBuffer ? new Paragraph({
     children: [
       new ImageRun({
@@ -151,11 +150,8 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
         floating: {
           horizontalPosition: { align: HorizontalPositionAlign.CENTER },
           verticalPosition: { align: VerticalPositionAlign.CENTER },
-          wrap: {
-            type: TextWrappingType.NONE,
-            side: TextWrappingSide.BOTH_SIDES,
-          },
-          zIndex: -1, // This effectively puts the image behind the text
+          wrap: { type: TextWrappingType.NONE }, // Fix: Use wrap instead of behindText
+          zIndex: -1, // This puts it behind the text
         },
       }),
     ],
@@ -294,19 +290,18 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
 // --- API ROUTE HANDLER FIX ---
 export async function POST(req: Request) {
   try {
-    const resume: Resume = await req.json();
+    const resume = await req.json();
     const buffer = await buildResumeDocx(resume);
 
-    // FIXED: Convert Buffer to Uint8Array to satisfy NextResponse types
+    // FIX: Convert Buffer to Uint8Array to satisfy NextResponse type requirements
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="${resume.candidate_name}_Resume.docx"`,
+        'Content-Disposition': 'attachment; filename="resume.docx"',
       },
     });
   } catch (error) {
-    console.error('Export Error:', error);
-    return NextResponse.json({ error: 'Failed to generate docx' }, { status: 500 });
+    return NextResponse.json({ error: 'Error' }, { status: 500 });
   }
 }
