@@ -7,7 +7,8 @@ export async function POST(req: NextRequest) {
     const { resume } = (await req.json()) as { resume: Resume };
     const buffer = await buildResumeDocx(resume);
 
-    return new NextResponse(buffer, {
+    // FIXED: Wrap 'buffer' in 'new Uint8Array()' to satisfy BodyInit type
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

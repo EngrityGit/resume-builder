@@ -13,12 +13,12 @@ import {
   Header,
   VerticalAlign,
   Packer,
-  // Fix: Import these for correct typing
+  // Added these imports for proper alignment and wrapping types
   HorizontalPositionAlign,
   VerticalPositionAlign,
   TextWrappingType,
+  TextWrappingSide,
 } from 'docx';
-import { NextResponse } from 'next/server';
 import type { Resume } from '@/types/resume';
 import { getFont, HEADER_FONT } from '@/lib/fonts';
 import fs from 'fs/promises';
@@ -131,7 +131,6 @@ function employmentTable(entry: ExtendedEmployment, bodyFont: string, isPresent:
   });
 }
 
-// --- CORE GENERATOR ---
 export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
   const bodyFont = getFont(resume.font).docxFont;
   const headerFont = getFont(HEADER_FONT).docxFont;
@@ -141,7 +140,8 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
   const logoBuffer = await fs.readFile(logoPath).catch(() => null);
   const watermarkBuffer = await fs.readFile(watermarkPath).catch(() => null);
 
-  // FIX: watermark definition
+  // 1. Watermark Definition FIXED
+  // 'behindText' is replaced with zIndex and TextWrappingType.NONE
   const watermarkPara = watermarkBuffer ? new Paragraph({
     children: [
       new ImageRun({
@@ -150,13 +150,17 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
         floating: {
           horizontalPosition: { align: HorizontalPositionAlign.CENTER },
           verticalPosition: { align: VerticalPositionAlign.CENTER },
-          wrap: { type: TextWrappingType.NONE }, // Fix: Use wrap instead of behindText
-          zIndex: -1, // This puts it behind the text
+          wrap: {
+            type: TextWrappingType.NONE,
+            side: TextWrappingSide.BOTH_SIDES,
+          },
+          zIndex: -1, // This sends the image behind the text
         },
       }),
     ],
   }) : new Paragraph({});
 
+  // 2. Header Definition
   const headerTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
@@ -285,23 +289,4 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
   });
 
   return Packer.toBuffer(doc);
-}
-
-// --- API ROUTE HANDLER FIX ---
-export async function POST(req: Request) {
-  try {
-    const resume = await req.json();
-    const buffer = await buildResumeDocx(resume);
-
-    // FIX: Convert Buffer to Uint8Array to satisfy NextResponse type requirements
-    return new NextResponse(new Uint8Array(buffer), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': 'attachment; filename="resume.docx"',
-      },
-    });
-  } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 });
-  }
 }
