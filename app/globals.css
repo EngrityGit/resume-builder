@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-body: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+html, body {
+  background: #FFFFFF;
+  color: #070B20;
+}
+
+* { scroll-behavior: smooth; }
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: #E3E6EB; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #D3E7FF; }
