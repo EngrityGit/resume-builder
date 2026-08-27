@@ -8,10 +8,9 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 
-// 1. Logic extracted to a sub-component
 function SignInForm() {
   const router = useRouter();
-  const searchParams = useSearchParams(); // This is what caused the error
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const [email, setEmail] = useState('');
@@ -26,9 +25,9 @@ function SignInForm() {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
       
-      // Use the redirect param or default to chat
       const redirectTo = searchParams.get('redirect') ?? '/chat';
       router.push(redirectTo);
+      router.refresh();
     } catch (err: any) {
       setError(err?.message ?? 'Sign in failed.');
     } finally {
@@ -54,7 +53,6 @@ function SignInForm() {
   );
 }
 
-// 2. Main Page with Suspense Boundary
 export default function SignInPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-engrity-gray/20">
@@ -63,7 +61,7 @@ export default function SignInPage() {
         <h1 className="text-xl font-bold text-engrity-navy mb-1">Welcome back</h1>
         <p className="text-sm text-engrity-navy/60 mb-6">Sign in to Engrity Resume Flow.</p>
 
-        <Suspense fallback={<div className="text-center py-4 text-sm text-gray-500">Loading sign in...</div>}>
+        <Suspense fallback={<div>Loading...</div>}>
           <SignInForm />
         </Suspense>
       </Card>
