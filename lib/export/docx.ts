@@ -13,7 +13,13 @@ import {
   Header,
   VerticalAlign,
   Packer,
+  // Added these imports to fix the floating/watermark errors
+  HorizontalPositionAlign,
+  VerticalPositionAlign,
+  TextWrappingType,
+  TextWrappingSide,
 } from 'docx';
+import { NextResponse } from 'next/server';
 import type { Resume } from '@/types/resume';
 import { getFont, HEADER_FONT } from '@/lib/fonts';
 import fs from 'fs/promises';
@@ -57,9 +63,6 @@ function sectionHeading(text: string, bodyFont: string) {
   });
 }
 
-/**
- * Creates a structured table for each job entry to ensure alignment
- */
 function employmentTable(entry: ExtendedEmployment, bodyFont: string, isPresent: boolean) {
   const dateRange = isPresent
     ? `${entry.start_date} - Till date`
@@ -129,32 +132,35 @@ function employmentTable(entry: ExtendedEmployment, bodyFont: string, isPresent:
   });
 }
 
+// --- CORE GENERATOR ---
 export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
   const bodyFont = getFont(resume.font).docxFont;
   const headerFont = getFont(HEADER_FONT).docxFont;
 
-  // Load Images from server path
   const logoPath = path.join(process.cwd(), 'public/engrity-logo.png');
   const watermarkPath = path.join(process.cwd(), 'public/watermark.png');
   const logoBuffer = await fs.readFile(logoPath).catch(() => null);
   const watermarkBuffer = await fs.readFile(watermarkPath).catch(() => null);
 
-  // 1. Watermark Definition
+  // FIXED: Watermark definition using correct enums and wrapping
   const watermarkPara = watermarkBuffer ? new Paragraph({
     children: [
       new ImageRun({
         data: watermarkBuffer,
         transformation: { width: 550, height: 550 },
         floating: {
-          horizontalPosition: { align: "center" },
-          verticalPosition: { align: "center" },
-          behindText: true,
+          horizontalPosition: { align: HorizontalPositionAlign.CENTER },
+          verticalPosition: { align: VerticalPositionAlign.CENTER },
+          wrap: {
+            type: TextWrappingType.NONE,
+            side: TextWrappingSide.BOTH_SIDES,
+          },
+          zIndex: -1, // This effectively puts the image behind the text
         },
       }),
     ],
   }) : new Paragraph({});
 
-  // 2. Header Definition (Repeats on every page)
   const headerTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
@@ -203,42 +209,35 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
     ],
   });
 
-  // 3. Document Content Flow
   const bodyContent: (Paragraph | Table)[] = [];
 
-  // Summary
   bodyContent.push(sectionHeading('Profile:', bodyFont));
   bodyContent.push(new Paragraph({
     spacing: { after: 200 },
     children: [new TextRun({ text: resume.profile_summary || '', color: ENGRITY_NAVY, font: bodyFont })]
   }));
 
-  // Certifications & Education
   if (resume.certifications?.length || resume.education?.length) {
     bodyContent.push(sectionHeading('Certification & Education:', bodyFont));
     resume.certifications?.forEach(c => bodyContent.push(checkBullet(typeof c === 'string' ? c : c.name, bodyFont)));
     resume.education?.forEach(e => bodyContent.push(checkBullet(`${e.credential}${e.institution ? ` — ${e.institution}` : ''}`, bodyFont)));
   }
 
-  // Safety Tickets
   if (resume.safety_tickets?.length) {
     bodyContent.push(sectionHeading('Safety Tickets:', bodyFont));
     resume.safety_tickets.forEach(t => bodyContent.push(checkBullet(t, bodyFont)));
   }
 
-  // Skills
   if (resume.skills?.length) {
     bodyContent.push(sectionHeading('Skills:', bodyFont));
     resume.skills.forEach(s => bodyContent.push(checkBullet(s, bodyFont)));
   }
 
-  // Computer Skills
   if (resume.computer_skills?.length) {
     bodyContent.push(sectionHeading('Computer Skills:', bodyFont));
     resume.computer_skills.forEach(s => bodyContent.push(checkBullet(s, bodyFont)));
   }
 
-  // Employment
   const presentJobs = resume.employment.filter(e => e.is_present);
   const pastJobs = resume.employment.filter(e => !e.is_present);
 
@@ -258,7 +257,6 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
     });
   }
 
-  // Final Contact Section
   bodyContent.push(sectionHeading('Contact Information:', bodyFont));
   bodyContent.push(new Paragraph({
     children: [
@@ -291,4 +289,24 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
   });
 
   return Packer.toBuffer(doc);
+}
+
+// --- API ROUTE HANDLER FIX ---
+export async function POST(req: Request) {
+  try {
+    const resume: Resume = await req.json();
+    const buffer = await buildResumeDocx(resume);
+
+    // FIXED: Convert Buffer to Uint8Array to satisfy NextResponse types
+    return new NextResponse(new Uint8Array(buffer), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="${resume.candidate_name}_Resume.docx"`,
+      },
+    });
+  } catch (error) {
+    console.error('Export Error:', error);
+    return NextResponse.json({ error: 'Failed to generate docx' }, { status: 500 });
+  }
 }
