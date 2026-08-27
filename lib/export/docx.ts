@@ -13,11 +13,6 @@ import {
   Header,
   VerticalAlign,
   Packer,
-  // Added these imports for proper alignment and wrapping types
-  HorizontalPositionAlign,
-  VerticalPositionAlign,
-  TextWrappingType,
-  TextWrappingSide,
 } from 'docx';
 import type { Resume } from '@/types/resume';
 import { getFont, HEADER_FONT } from '@/lib/fonts';
@@ -26,22 +21,37 @@ import path from 'path';
 
 const ENGRITY_BLUE = '0071FE';
 const ENGRITY_NAVY = '070B20';
-const TEXT_GRAY = '808080';
+const TEXT_GRAY = '808080'; // Hex value for gray
 
-type ExtendedEmployment = Resume['employment'][number];
+type ExtendedEmployment = Resume['employment'][number] & {
+  project_name?: string;
+};
 
-// --- HELPERS ---
 function createSpacer(points = 200) {
   return new Paragraph({ spacing: { before: points } });
 }
 
+function checkGlyph() {
+  return new TextRun({ 
+    text: '\u00FC', 
+    font: 'Wingdings', 
+    color: ENGRITY_BLUE, 
+    bold: true,
+  });
+}
+
 function checkBullet(text: string, bodyFont: string) {
   return new Paragraph({
-    spacing: { after: 80 },
-    indent: { left: 360, hanging: 360 },
+    spacing: { after: 100 },
+    indent: { left: 360, hanging: 360 }, 
+    tabStops: [{ type: 'left', position: 360 }],
     children: [
-      new TextRun({ text: 'ü', font: 'Wingdings', color: ENGRITY_BLUE, bold: true }),
-      new TextRun({ text: `\t${text}`, color: ENGRITY_NAVY, font: bodyFont }),
+      checkGlyph(),
+      new TextRun({ 
+        text: `\t${text}`, 
+        color: ENGRITY_NAVY, 
+        font: bodyFont 
+      }),
     ],
   });
 }
@@ -62,10 +72,12 @@ function sectionHeading(text: string, bodyFont: string) {
   });
 }
 
-function employmentTable(entry: ExtendedEmployment, bodyFont: string, isPresent: boolean) {
-  const dateRange = isPresent
+function employmentTable(entry: ExtendedEmployment, bodyFont: string) {
+  const dateRange = entry.is_present
     ? `${entry.start_date} - Till date`
     : `${entry.start_date} – ${entry.end_date ?? ''}`;
+
+  const projectName = entry.project_name ? ` - ${entry.project_name}` : '';
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
@@ -78,22 +90,13 @@ function employmentTable(entry: ExtendedEmployment, bodyFont: string, isPresent:
       new TableRow({
         children: [
           new TableCell({
-            width: { size: 70, type: WidthType.PERCENTAGE },
+            columnSpan: 2,
             children: [
               new Paragraph({
                 children: [
-                  new TextRun({ text: entry.company, bold: true, color: ENGRITY_NAVY, size: 22, font: bodyFont }),
+                  new TextRun({ text: `${entry.company}${projectName}`, bold: true, color: ENGRITY_NAVY, size: 22, font: bodyFont }),
                   new TextRun({ text: entry.location ? ` | ${entry.location}` : '', color: ENGRITY_NAVY, size: 22, font: bodyFont }),
                 ],
-              }),
-            ],
-          }),
-          new TableCell({
-            width: { size: 30, type: WidthType.PERCENTAGE },
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.RIGHT,
-                children: [new TextRun({ text: dateRange, color: ENGRITY_NAVY, font: bodyFont })],
               }),
             ],
           }),
@@ -102,10 +105,19 @@ function employmentTable(entry: ExtendedEmployment, bodyFont: string, isPresent:
       new TableRow({
         children: [
           new TableCell({
-            columnSpan: 2,
+            width: { size: 50, type: WidthType.PERCENTAGE },
             children: [
               new Paragraph({
                 children: [new TextRun({ text: entry.title, italics: true, color: ENGRITY_NAVY, font: bodyFont })],
+              }),
+            ],
+          }),
+          new TableCell({
+            width: { size: 50, type: WidthType.PERCENTAGE },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.RIGHT,
+                children: [new TextRun({ text: dateRange, color: ENGRITY_NAVY, font: bodyFont })],
               }),
             ],
           }),
@@ -122,8 +134,15 @@ function employmentTable(entry: ExtendedEmployment, bodyFont: string, isPresent:
                   new TextRun({ text: 'Responsibilities', bold: true, underline: { type: 'single' }, color: ENGRITY_NAVY, font: bodyFont })
                 ],
               }),
-              ...entry.responsibilities.map((r) => checkBullet(r, bodyFont)),
             ],
+          }),
+        ],
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            columnSpan: 2,
+            children: entry.responsibilities.map((r) => checkBullet(r, bodyFont)),
           }),
         ],
       }),
@@ -131,36 +150,20 @@ function employmentTable(entry: ExtendedEmployment, bodyFont: string, isPresent:
   });
 }
 
-export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
+export async function buildResumeDocx(resume: Resume, providedLogoBuffer?: Buffer): Promise<Buffer> {
   const bodyFont = getFont(resume.font).docxFont;
   const headerFont = getFont(HEADER_FONT).docxFont;
 
-  const logoPath = path.join(process.cwd(), 'public/engrity-logo.png');
-  const watermarkPath = path.join(process.cwd(), 'public/watermark.png');
-  const logoBuffer = await fs.readFile(logoPath).catch(() => null);
-  const watermarkBuffer = await fs.readFile(watermarkPath).catch(() => null);
+  let logoToUse: Buffer | undefined = providedLogoBuffer;
+  if (!logoToUse) {
+    try {
+      const logoPath = path.join(process.cwd(), 'public/engrity-logo.png');
+      logoToUse = await fs.readFile(logoPath);
+    } catch (e) {
+      console.warn("Logo file could not be loaded. Skipping logo.");
+    }
+  }
 
-  // 1. Watermark Definition FIXED
-  // 'behindText' is replaced with zIndex and TextWrappingType.NONE
-  const watermarkPara = watermarkBuffer ? new Paragraph({
-    children: [
-      new ImageRun({
-        data: watermarkBuffer,
-        transformation: { width: 550, height: 550 },
-        floating: {
-          horizontalPosition: { align: HorizontalPositionAlign.CENTER },
-          verticalPosition: { align: VerticalPositionAlign.CENTER },
-          wrap: {
-            type: TextWrappingType.NONE,
-            side: TextWrappingSide.BOTH_SIDES,
-          },
-          zIndex: -1, // This sends the image behind the text
-        },
-      }),
-    ],
-  }) : new Paragraph({});
-
-  // 2. Header Definition
   const headerTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
@@ -172,25 +175,27 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
       new TableRow({
         children: [
           new TableCell({
-            width: { size: 15, type: WidthType.PERCENTAGE },
+            width: { size: 20, type: WidthType.PERCENTAGE },
             verticalAlign: VerticalAlign.CENTER,
-            children: logoBuffer ? [
-              new Paragraph({ children: [new ImageRun({ data: logoBuffer, transformation: { width: 80, height: 80 } })] })
+            children: logoToUse ? [
+              new Paragraph({
+                children: [new ImageRun({ data: logoToUse, transformation: { width: 90, height: 90 } })],
+              })
             ] : [],
           }),
           new TableCell({
-            width: { size: 85, type: WidthType.PERCENTAGE },
+            width: { size: 80, type: WidthType.PERCENTAGE },
             verticalAlign: VerticalAlign.CENTER,
             children: [
               new Paragraph({
                 alignment: AlignmentType.CENTER,
-                children: [new TextRun({ text: 'Resume', size: 32, color: TEXT_GRAY, font: headerFont })],
+                children: [new TextRun({ text: 'Resume', size: 32, color: TEXT_GRAY, font: headerFont })], // FIXED: Used hex code '808080'
               }),
               new Paragraph({
                 alignment: AlignmentType.CENTER,
                 children: [
                   new TextRun({
-                    text: `${resume.candidate_name} – ${resume.designation || resume.job_title || ''}`,
+                    text: `${resume.candidate_name} – ${resume.designation ?? resume.job_title ?? ''}`,
                     bold: true, size: 26, color: ENGRITY_NAVY, font: headerFont,
                   }),
                 ],
@@ -201,7 +206,9 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
                   new TextRun({ text: 'Engrity Inspection Services – Engrity Group Inc.', bold: true, color: ENGRITY_NAVY, font: headerFont }),
                 ],
               }),
-              new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: ENGRITY_BLUE } } })
+              new Paragraph({
+                border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: ENGRITY_BLUE } },
+              })
             ],
           }),
         ],
@@ -209,82 +216,52 @@ export async function buildResumeDocx(resume: Resume): Promise<Buffer> {
     ],
   });
 
-  const bodyContent: (Paragraph | Table)[] = [];
+  const body: (Paragraph | Table)[] = [
+    sectionHeading('Profile:', bodyFont),
+    new Paragraph({ spacing: { after: 200 }, children: [new TextRun({ text: resume.profile_summary ?? '', color: ENGRITY_NAVY, font: bodyFont })] }),
 
-  bodyContent.push(sectionHeading('Profile:', bodyFont));
-  bodyContent.push(new Paragraph({
-    spacing: { after: 200 },
-    children: [new TextRun({ text: resume.profile_summary || '', color: ENGRITY_NAVY, font: bodyFont })]
-  }));
+    sectionHeading('Certification & Education:', bodyFont),
+    ...resume.certifications.flatMap((c) => [
+      checkBullet(c.name, bodyFont),
+      ...(c.endorsements ?? []).map(
+        (e) => new Paragraph({ 
+          indent: { left: 720, hanging: 360 }, 
+          tabStops: [{ type: 'left', position: 720 }],
+          children: [new TextRun({ text: `\t○  Endorsements: ${e}`, color: ENGRITY_NAVY, font: bodyFont })] 
+        })
+      ),
+    ]),
+    ...resume.education.map((e) => checkBullet(`${e.credential}${e.institution ? ` — ${e.institution}` : ''}`, bodyFont)),
 
-  if (resume.certifications?.length || resume.education?.length) {
-    bodyContent.push(sectionHeading('Certification & Education:', bodyFont));
-    resume.certifications?.forEach(c => bodyContent.push(checkBullet(typeof c === 'string' ? c : c.name, bodyFont)));
-    resume.education?.forEach(e => bodyContent.push(checkBullet(`${e.credential}${e.institution ? ` — ${e.institution}` : ''}`, bodyFont)));
-  }
+    sectionHeading('Safety Tickets:', bodyFont),
+    ...resume.safety_tickets.map((t) => checkBullet(t, bodyFont)),
 
-  if (resume.safety_tickets?.length) {
-    bodyContent.push(sectionHeading('Safety Tickets:', bodyFont));
-    resume.safety_tickets.forEach(t => bodyContent.push(checkBullet(t, bodyFont)));
-  }
+    sectionHeading('Skills:', bodyFont),
+    ...resume.skills.map((s) => checkBullet(s, bodyFont)),
 
-  if (resume.skills?.length) {
-    bodyContent.push(sectionHeading('Skills:', bodyFont));
-    resume.skills.forEach(s => bodyContent.push(checkBullet(s, bodyFont)));
-  }
+    sectionHeading('Present Employment:', bodyFont),
+    ...resume.employment.filter((e) => e.is_present).flatMap((e) => [
+      employmentTable(e as ExtendedEmployment, bodyFont),
+      createSpacer(300)
+    ]),
 
-  if (resume.computer_skills?.length) {
-    bodyContent.push(sectionHeading('Computer Skills:', bodyFont));
-    resume.computer_skills.forEach(s => bodyContent.push(checkBullet(s, bodyFont)));
-  }
-
-  const presentJobs = resume.employment.filter(e => e.is_present);
-  const pastJobs = resume.employment.filter(e => !e.is_present);
-
-  if (presentJobs.length) {
-    bodyContent.push(sectionHeading('Present Employment:', bodyFont));
-    presentJobs.forEach(job => {
-      bodyContent.push(employmentTable(job, bodyFont, true));
-      bodyContent.push(createSpacer(300));
-    });
-  }
-
-  if (pastJobs.length) {
-    bodyContent.push(sectionHeading('Past Employment:', bodyFont));
-    pastJobs.forEach(job => {
-      bodyContent.push(employmentTable(job, bodyFont, false));
-      bodyContent.push(createSpacer(300));
-    });
-  }
-
-  bodyContent.push(sectionHeading('Contact Information:', bodyFont));
-  bodyContent.push(new Paragraph({
-    children: [
-      new TextRun({ text: "Email: ", bold: true, color: ENGRITY_NAVY, font: bodyFont }),
-      new TextRun({ text: resume.email || 'N/A', color: ENGRITY_NAVY, font: bodyFont }),
-      new TextRun({ text: "   |   Phone: ", bold: true, color: ENGRITY_NAVY, font: bodyFont }),
-      new TextRun({ text: resume.phone || 'N/A', color: ENGRITY_NAVY, font: bodyFont }),
-    ]
-  }));
-  if (resume.address) {
-    bodyContent.push(new Paragraph({
-      children: [
-        new TextRun({ text: `Address: ${resume.address}`, color: ENGRITY_NAVY, font: bodyFont })
-      ]
-    }));
-  }
+    sectionHeading('Past Employment:', bodyFont),
+    ...resume.employment.filter((e) => !e.is_present).flatMap((e) => [
+      employmentTable(e as ExtendedEmployment, bodyFont),
+      createSpacer(300)
+    ]),
+  ];
 
   const doc = new Document({
     sections: [{
       properties: {
-        page: { margin: { top: 800, bottom: 800, left: 1000, right: 1000 } },
+        page: {
+          size: { width: 12240, height: 15840 },
+          margin: { top: 800, bottom: 800, left: 1000, right: 1000 },
+        },
       },
-      headers: { 
-        default: new Header({ 
-          children: [watermarkPara, headerTable, new Paragraph({ spacing: { after: 200 } })] 
-        }) 
-      },
-      children: bodyContent,
+      headers: { default: new Header({ children: [headerTable, createSpacer(200)] }) },
+      children: body,
     }],
   });
 
